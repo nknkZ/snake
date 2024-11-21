@@ -4,7 +4,7 @@ import time
 import math
 from pygame import mixer
 
-# Initialize Pygame
+# Initialize Pygame and mixer
 pygame.init()
 mixer.init()
 
