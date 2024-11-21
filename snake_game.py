@@ -34,7 +34,7 @@ class Snake:
         self.direction = random.choice([UP, DOWN, LEFT, RIGHT])
         self.color = GREEN
         self.score = 0
-        self.base_speed = 1
+        self.base_speed = 1.2
         self.speed = self.base_speed
         self.food_collected = {}
 
@@ -302,75 +302,208 @@ class FoodManager:
 class Eagle:
     def __init__(self, window_size, position=None):
         self.grid_size = GRID_SIZE
-        self.width = GRID_SIZE
-        self.height = GRID_SIZE
+        self.width = GRID_SIZE * 2
+        self.height = GRID_SIZE * 2
         self.window_size = window_size
-        if position:
-            self.position = position
-        else:
-            self.position = (
-                random.randint(1, (window_size//GRID_SIZE)-2) * GRID_SIZE,
-                random.randint(1, (window_size//GRID_SIZE)-2) * GRID_SIZE
-            )
+        # Generate random position that's not in the center where snake starts
+        self.position = self.generate_random_position(window_size)
         self.direction = random.choice([UP, DOWN, LEFT, RIGHT])
-        self.base_speed = 0.3
+        self.base_speed = 0.2
         self.speed = self.base_speed
 
+    def generate_random_position(self, window_size):
+        # Calculate center zone to avoid (where snake starts)
+        center = window_size // 2
+        safe_distance = 4 * GRID_SIZE  # Keep eagles away from snake's starting position
+        
+        while True:
+            x = random.randint(0, (window_size - self.width) // GRID_SIZE) * GRID_SIZE
+            y = random.randint(0, (window_size - self.height) // GRID_SIZE) * GRID_SIZE
+            
+            # Check if position is far enough from center
+            if abs(x - center) > safe_distance or abs(y - center) > safe_distance:
+                return (x, y)
+
     @staticmethod
-    def create_formation(window_size, count=2):  # Default to 2 eagles
+    def create_formation(window_size, count):
         eagles = []
-        if count == 1:
-            # Just create center eagle
-            center_x = (window_size // GRID_SIZE // 2) * GRID_SIZE
-            center_y = (window_size // GRID_SIZE // 2) * GRID_SIZE
-            eagles.append(Eagle(window_size, (center_x, center_y)))
-        else:
-            # Create two eagles side by side
-            center_x = (window_size // GRID_SIZE // 2) * GRID_SIZE
-            center_y = (window_size // GRID_SIZE // 2) * GRID_SIZE
-            positions = [
-                (center_x - 2 * GRID_SIZE, center_y),  # Left eagle
-                (center_x + 2 * GRID_SIZE, center_y)   # Right eagle
-            ]
-            for pos in positions[:count]:
-                eagles.append(Eagle(window_size, pos))
+        for _ in range(count):
+            new_eagle = Eagle(window_size)
+            # Ensure eagles don't overlap with each other
+            while any(Eagle.check_overlap(new_eagle, existing_eagle) for existing_eagle in eagles):
+                new_eagle = Eagle(window_size)
+            eagles.append(new_eagle)
         return eagles
+
+    @staticmethod
+    def check_overlap(eagle1, eagle2):
+        # Create rectangles for collision detection
+        rect1 = pygame.Rect(eagle1.position[0], eagle1.position[1], 
+                          eagle1.width + GRID_SIZE, eagle1.height + GRID_SIZE)
+        rect2 = pygame.Rect(eagle2.position[0], eagle2.position[1], 
+                          eagle2.width + GRID_SIZE, eagle2.height + GRID_SIZE)
+        return rect1.colliderect(rect2)
 
     def update(self):
         x, y = self.direction
-        new_x = (self.position[0] + (x*self.speed)) % (self.window_size - self.width)
-        new_y = (self.position[1] + (y*self.speed)) % (self.window_size - self.height)
+        new_x = self.position[0] + (x * GRID_SIZE * self.speed)
+        new_y = self.position[1] + (y * GRID_SIZE * self.speed)
+        
+        # Adjust boundary checking for larger size
+        if new_x < 0:
+            new_x = self.window_size - self.width
+        elif new_x > self.window_size - self.width:
+            new_x = 0
+            
+        if new_y < 0:
+            new_y = self.window_size - self.height
+        elif new_y > self.window_size - self.height:
+            new_y = 0
+            
         self.position = (new_x, new_y)
+        
+        # Change direction randomly
+        if random.random() < 0.02:  # 2% chance to change direction
+            self.direction = random.choice([UP, DOWN, LEFT, RIGHT])
 
     def draw(self, surface):
-        x, y = self.position
-        # Draw eagle body (dark brown)
-        pygame.draw.rect(surface, (101, 67, 33),
-                        (x, y, self.width, self.height))
+        # Draw larger eagle
+        eagle_rect = pygame.Rect(self.position[0], self.position[1], 
+                               self.width, self.height)
+        pygame.draw.rect(surface, (139, 69, 19), eagle_rect)  # Brown color
         
-        # Draw wings (black)
-        wing_size = GRID_SIZE // 3
-        pygame.draw.line(surface, (0, 0, 0),
-                        (x - wing_size, y + self.height//2),
-                        (x + self.width + wing_size, y + self.height//2), 3)
+        # Draw wings (larger)
+        wing_width = self.width // 2
+        wing_height = self.height // 2
         
-        # Draw head (lighter brown)
-        head_size = GRID_SIZE // 3
-        pygame.draw.circle(surface, (139, 69, 19),
-                         (x + self.width//2, y + head_size),
-                         head_size)
+        # Left wing
+        pygame.draw.ellipse(surface, (165, 42, 42),  # Brown-red color
+                          (self.position[0] - wing_width//2,
+                           self.position[1] + wing_height//2,
+                           wing_width, wing_height))
         
-        # Draw beak (yellow)
-        pygame.draw.polygon(surface, (255, 215, 0),
-                          [(x + self.width//2, y),
-                           (x + self.width//2 + 2, y + head_size),
-                           (x + self.width//2 - 2, y + head_size)])
+        # Right wing
+        pygame.draw.ellipse(surface, (165, 42, 42),
+                          (self.position[0] + self.width - wing_width//2,
+                           self.position[1] + wing_height//2,
+                           wing_width, wing_height))
+        
+        # Draw eyes (larger)
+        eye_radius = 4  # Bigger eyes
+        # Left eye
+        pygame.draw.circle(surface, WHITE,
+                         (self.position[0] + self.width//4,
+                          self.position[1] + self.height//4), eye_radius)
+        # Right eye
+        pygame.draw.circle(surface, WHITE,
+                         (self.position[0] + 3*self.width//4,
+                          self.position[1] + self.height//4), eye_radius)
+        
+        # Draw beak (larger)
+        beak_points = [
+            (self.position[0] + self.width//2, self.position[1] + self.height//4),
+            (self.position[0] + self.width//3, self.position[1] + self.height//2),
+            (self.position[0] + 2*self.width//3, self.position[1] + self.height//2)
+        ]
+        pygame.draw.polygon(surface, (255, 165, 0), beak_points)  # Orange beak
 
     def update_speed(self, score):
         # Increase eagle speed with score
-        self.speed = self.base_speed + (score // 30) * 0.1
+        self.speed = self.base_speed + (score // 10) * 0.1
 
-def show_game_over(surface, score, food_collected, window_size):
+def show_death_screen(surface, death_type, window_size):
+    font_large = pygame.font.Font(None, min(64, int(window_size / 10)))
+    surface.fill(BACKGROUND)
+    
+    if death_type == "eagle":
+        # Draw eagle eating snake scene
+        eagle_size = min(window_size // 2, 200)  # Size of eagle image
+        
+        # Draw large eagle (centered, top half)
+        eagle_pos = (window_size//2 - eagle_size//2, window_size//4)
+        pygame.draw.rect(surface, (139, 69, 19), 
+                        (eagle_pos[0], eagle_pos[1], eagle_size, eagle_size))
+        
+        # Draw eagle's wings
+        wing_width = eagle_size * 0.7
+        wing_height = eagle_size * 0.4
+        # Left wing
+        pygame.draw.ellipse(surface, (165, 42, 42),
+                          (eagle_pos[0] - wing_width//3,
+                           eagle_pos[1] + wing_height,
+                           wing_width, wing_height))
+        # Right wing
+        pygame.draw.ellipse(surface, (165, 42, 42),
+                          (eagle_pos[0] + eagle_size - wing_width*2//3,
+                           eagle_pos[1] + wing_height,
+                           wing_width, wing_height))
+        
+        # Draw snake being eaten (dangling from eagle's beak)
+        snake_color = (50, 255, 50)  # Green
+        snake_segments = [(eagle_pos[0] + eagle_size//2, eagle_pos[1] + eagle_size*0.7)]
+        for i in range(5):  # Wavy snake body
+            x = snake_segments[0][0] + math.sin(i/2) * 20
+            y = snake_segments[0][1] + i * 20
+            snake_segments.append((x, y))
+        
+        for i in range(len(snake_segments)-1):
+            pygame.draw.line(surface, snake_color, 
+                           snake_segments[i], snake_segments[i+1], 10)
+        
+        # Draw eagle's eyes (angry)
+        eye_size = eagle_size * 0.1
+        pygame.draw.line(surface, (0, 0, 0),
+                        (eagle_pos[0] + eagle_size//3, eagle_pos[1] + eagle_size//3),
+                        (eagle_pos[0] + eagle_size//3 - eye_size, eagle_pos[1] + eagle_size//3 - eye_size), 5)
+        pygame.draw.line(surface, (0, 0, 0),
+                        (eagle_pos[0] + eagle_size*2//3, eagle_pos[1] + eagle_size//3),
+                        (eagle_pos[0] + eagle_size*2//3 + eye_size, eagle_pos[1] + eagle_size//3 - eye_size), 5)
+        
+    else:  # self collision
+        # Draw dizzy snake
+        snake_size = min(window_size // 2, 200)
+        center_x = window_size // 2
+        center_y = window_size // 2
+        
+        # Draw coiled snake body
+        for i in range(0, 360, 20):
+            radius = snake_size//3 - i//8
+            x = center_x + math.cos(math.radians(i)) * radius
+            y = center_y + math.sin(math.radians(i)) * radius
+            pygame.draw.circle(surface, GREEN, (int(x), int(y)), 10)
+        
+        # Draw dizzy eyes (X X)
+        eye_size = 15
+        # Left eye
+        pygame.draw.line(surface, BLUE,
+                        (center_x - 30 - eye_size, center_y - eye_size),
+                        (center_x - 30 + eye_size, center_y + eye_size), 4)
+        pygame.draw.line(surface, BLUE,
+                        (center_x - 30 - eye_size, center_y + eye_size),
+                        (center_x - 30 + eye_size, center_y - eye_size), 4)
+        # Right eye
+        pygame.draw.line(surface, BLUE,
+                        (center_x + 30 - eye_size, center_y - eye_size),
+                        (center_x + 30 + eye_size, center_y + eye_size), 4)
+        pygame.draw.line(surface, BLUE,
+                        (center_x + 30 - eye_size, center_y + eye_size),
+                        (center_x + 30 + eye_size, center_y - eye_size), 4)
+        
+        # Draw dizzy stars
+        for i in range(5):
+            angle = i * (360/5)
+            star_x = center_x + math.cos(math.radians(angle)) * snake_size//1.5
+            star_y = center_y + math.sin(math.radians(angle)) * snake_size//1.5
+            pygame.draw.circle(surface, (255, 255, 0), (int(star_x), int(star_y)), 5)
+
+    pygame.display.flip()
+    pygame.time.wait(4000)  # Wait 4 seconds
+
+def show_game_over(surface, score, food_collected, window_size, death_type):
+    # Show death animation first
+    show_death_screen(surface, death_type, window_size)
+    
+    # Then show collection screen (without "Game Over" text)
     running = True
     font_large = pygame.font.Font(None, min(64, int(window_size / 10)))
     font_small = pygame.font.Font(None, min(36, int(window_size / 15)))
@@ -385,18 +518,11 @@ def show_game_over(surface, score, food_collected, window_size):
     while running:
         surface.fill(BACKGROUND)
         
-        # Game Over text
-        text = font_large.render('Game Over!', True, (0, 0, 0))
-        text_rect = text.get_rect()
-        text_rect.centerx = window_size//2
-        text_rect.top = window_size//8
-        surface.blit(text, text_rect)
-        
         # Score text
         score_text = font_large.render(f'Score: {score}', True, (0, 0, 0))
         score_rect = score_text.get_rect()
         score_rect.centerx = window_size//2
-        score_rect.top = text_rect.bottom + 20
+        score_rect.top = window_size//8
         surface.blit(score_text, score_rect)
         
         # Food collection display
@@ -509,6 +635,7 @@ def main():
                 # Update snake and check collisions
                 if not snake.update():
                     game_over = True
+                    death_type = "self"
                     continue
 
                 # Check eagle collisions
@@ -520,6 +647,7 @@ def main():
                                            GRID_SIZE-1, GRID_SIZE-1)
                     if eagle_rect.colliderect(snake_rect):
                         game_over = True
+                        death_type = "eagle"
                         break
 
                 last_update = time.time()
@@ -540,7 +668,12 @@ def main():
                 
                 # Add new eagle every 30 points
                 if len(eagles) < snake.score // 30 + 2:  # +2 for initial eagles
-                    eagles.append(Eagle(current_window_size))
+                    new_eagle = Eagle(current_window_size)
+                    # Ensure new eagle doesn't overlap with existing eagles
+                    attempts = 0
+                    while attempts < 100 and any(Eagle.check_overlap(new_eagle, existing_eagle) for existing_eagle in eagles):
+                        new_eagle = Eagle(current_window_size)
+                    eagles.append(new_eagle)
 
                 # Update window size
                 new_window_size = calculate_window_size(snake.score)
@@ -564,7 +697,7 @@ def main():
             clock.tick(60)
 
         if game_over:
-            running = show_game_over(screen, snake.score, snake.food_collected, current_window_size)
+            running = show_game_over(screen, snake.score, snake.food_collected, current_window_size, death_type)
 
     pygame.quit()
 
